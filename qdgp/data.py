@@ -22,6 +22,7 @@ VALID_NETWORKS = Literal[
     "apid",
     "hprd",
     "wl",  # https://pubmed.ncbi.nlm.nih.gov/34132494/
+    "collectri",  # CollecTRI GRN (in data/collectri/)
 ]
 valid_networks: List[str] = list(get_args(VALID_NETWORKS))
 
@@ -122,6 +123,32 @@ def build_graph_gmb(
     gmb_df = gmb_df[["gene_ID_1", "gene_ID_2"]]
     gmb_df.columns = ["source", "target"]
     G, code_dict = _build_graph(pd.DataFrame(gmb_df), filter_method)
+    return G, code_dict
+
+
+def build_graph_collectri(
+    data_path: Path,
+    filter_method: FilterGCC,
+) -> Tuple[nx.Graph, Dict[int, int]]:
+    """Read CollecTRI GRN csv file and convert it to a networkx graph.
+
+    The file is expected at:
+        data/collectri/GRN_CollecTRI_20250718.csv
+
+    Notes
+    -----
+    - The raw file uses gene symbols; we map them to integer node ids to match
+      the rest of qdgp's benchmarking + model code (which expects 0..n-1).
+    - Any additional columns are ignored.
+    """
+    grn_path = data_path / "collectri/GRN_CollecTRI_20250718.csv"
+    grn_df = pd.read_csv(grn_path, usecols=["source", "target", "weight"])
+    grn_df = grn_df.dropna(subset=["source", "target"])
+    grn_df["source"] = grn_df["source"].astype(str)
+    grn_df["target"] = grn_df["target"].astype(str)
+
+    # Treat as undirected for compatibility with Laplacian-based methods.
+    G, code_dict = _build_graph(pd.DataFrame(grn_df[["source", "target"]]), filter_method)
     return G, code_dict
 
 
@@ -363,8 +390,10 @@ def load_dataset(
             network=network,
             filter_method=filter_method,
         )
-    elif network == "wl-ppi":
+    elif network == "wl":
         G, code_dict = build_graph_wl(data_path, filter_method=filter_method)
+    elif network == "collectri":
+        G, code_dict = build_graph_collectri(data_path, filter_method=filter_method)
     else:
         G, code_dict = build_graph_gmb(data_path, filter_method=filter_method)
 

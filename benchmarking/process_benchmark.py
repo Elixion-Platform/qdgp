@@ -5,7 +5,6 @@ import seaborn as sns
 
 def main():
     res_df = pd.read_csv("benchmark.csv")
-    res_df = res_df[res_df.Network == "wl"]
     print(res_df.columns)
     mean_df = res_df.groupby(["Method", "Num_seeds", "Network"]).agg(
         ({"Time (s)": ["mean", "std"]})
@@ -20,7 +19,7 @@ def main():
     # plt.show()
     plt.tight_layout()
     # plt.show()
-    plt.savefig("benchmarking/benchamark.png")
+    plt.savefig("benchmarking/benchmark.png")
 
 
 if __name__ == "__main__":
