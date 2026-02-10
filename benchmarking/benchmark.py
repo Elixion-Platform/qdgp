@@ -37,6 +37,7 @@ def _try_import_qwalker() -> Tuple[bool, Optional[Callable], Optional[Callable]]
 logger = logging.getLogger(__name__)
 formatter = logging.Formatter("%(message)s")
 OUTPUT_DIR = Path("benchmarking")
+COLLECTRI_DIR = Path("data") / "collectri"
 
 
 def timing(f: Callable) -> Callable:
@@ -90,6 +91,82 @@ def _synthetic_seeds_by_group(
             seeds = rng.choice(nodes, size=k, replace=False).tolist()
             seeds_by[f"synthetic_k{k}_{i:02d}"] = seeds
     return seeds_by
+
+
+def _read_deg_table(path: Path) -> pd.DataFrame:
+    df = pd.read_excel(path)
+    cols = {c.lower(): c for c in df.columns}
+    required = {"gene", "log2foldchange", "padj"}
+    if not required.issubset(cols.keys()):
+        missing = required.difference(cols.keys())
+        raise ValueError(f"Missing DEG columns in {path.name}: {sorted(missing)}")
+    df = df[[cols["gene"], cols["log2foldchange"], cols["padj"]]].copy()
+    df.columns = ["gene", "log2FoldChange", "padj"]
+    return df
+
+
+def _collectri_deg_seeds(
+    code_dict: Dict[str, int],
+    max_genes: Optional[int] = None,
+    padj_threshold: float = 0.05,
+) -> Tuple[Dict[str, List[int]], Dict[str, List[str]]]:
+    deg_files = {
+        "deg_er": COLLECTRI_DIR / "DEG" / "Malignant_ER_vs_Normal.xlsx",
+        "deg_her2": COLLECTRI_DIR / "DEG" / "Malignant_HER2_vs_Normal.xlsx",
+        "deg_tnbc": COLLECTRI_DIR / "DEG" / "Malignant_TNBC_vs_Normal.xlsx",
+    }
+
+    seeds_by_disease: Dict[str, List[int]] = {}
+    genes_by_disease: Dict[str, List[str]] = {}
+    combined_scores: Dict[str, float] = {}
+
+    for label, path in deg_files.items():
+        df = _read_deg_table(path)
+        df = df[df["padj"].notna() & df["log2FoldChange"].notna()]
+        df = df[df["padj"] < float(padj_threshold)]
+        df = df.sort_values("log2FoldChange", ascending=False)
+        genes = df["gene"].astype(str).tolist()
+        if max_genes is not None:
+            genes = genes[: int(max_genes)]
+
+        mapped = [code_dict[g] for g in genes if g in code_dict]
+        if len(mapped) == 0:
+            continue
+
+        genes_by_disease[label] = genes
+        seeds_by_disease[label] = mapped
+
+        for gene, log2fc in zip(df["gene"].astype(str), df["log2FoldChange"]):
+            if pd.isna(log2fc) or gene not in code_dict:
+                continue
+            score = float(log2fc)
+            if gene not in combined_scores or score > combined_scores[gene]:
+                combined_scores[gene] = score
+
+    if combined_scores:
+        combined = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+        if max_genes is not None:
+            combined = combined[: int(max_genes)]
+        combined_genes = [gene for gene, _ in combined]
+        combined_ids = [code_dict[g] for g in combined_genes if g in code_dict]
+        if len(combined_ids) > 0:
+            genes_by_disease["deg_combined"] = combined_genes
+            seeds_by_disease["deg_combined"] = combined_ids
+
+    return seeds_by_disease, genes_by_disease
+
+
+def _collectri_validation_genes(code_dict: Dict[str, int]) -> pd.DataFrame:
+    path = COLLECTRI_DIR / "high_confidence_genes" / "BC High-confidence genes.xlsx"
+    df = pd.read_excel(path, sheet_name=0)
+    cols = {c.lower(): c for c in df.columns}
+    gene_col = cols.get("genes") or cols.get("gene")
+    if gene_col is None:
+        raise ValueError("Missing 'Genes' column in high-confidence genes file")
+    genes = df[gene_col].astype(str).dropna().tolist()
+    valid_genes = [g for g in genes if g in code_dict]
+    mapped = [code_dict[g] for g in valid_genes]
+    return pd.DataFrame({"gene": valid_genes, "node_id": mapped})
 
 
 @timing
@@ -190,14 +267,36 @@ def _make_benchmark_qwalker_quantum(
 
 
 def main(network: str) -> pd.DataFrame:
-    G, code_dict, seeds_by_disease = dt.load_dataset("gmb", network, dt.FilterGCC.TRUE)
-    diseases = list(seeds_by_disease.keys())
-    if len(diseases) == 0:
-        # Networks like CollecTRI won't have matching disease annotations.
-        seeds_by_disease = _synthetic_seeds_by_group(
-            G.nodes(), seed_sizes=[15, 30, 60, 120], diseases_per_size=10, rng_seed=0
+    if network == "collectri":
+        G, code_dict = dt.build_graph_collectri(
+            Path("data"), filter_method=dt.FilterGCC.TRUE
+        )
+        seeds_by_disease, _ = _collectri_deg_seeds(code_dict)
+        diseases = list(seeds_by_disease.keys())
+        if len(diseases) == 0:
+            seeds_by_disease = _synthetic_seeds_by_group(
+                G.nodes(), seed_sizes=[15, 30, 60, 120], diseases_per_size=10, rng_seed=0
+            )
+            diseases = list(seeds_by_disease.keys())
+        else:
+            try:
+                validation_df = _collectri_validation_genes(code_dict)
+                validation_df.to_csv(
+                    OUTPUT_DIR / "collectri_validation_genes.csv", index=False
+                )
+            except Exception as exc:
+                logger.warning("Collectri validation genes unavailable: %s", exc)
+    else:
+        G, code_dict, seeds_by_disease = dt.load_dataset(
+            "gmb", network, dt.FilterGCC.TRUE
         )
         diseases = list(seeds_by_disease.keys())
+        if len(diseases) == 0:
+            # Networks like CollecTRI won't have matching disease annotations.
+            seeds_by_disease = _synthetic_seeds_by_group(
+                G.nodes(), seed_sizes=[15, 30, 60, 120], diseases_per_size=10, rng_seed=0
+            )
+            diseases = list(seeds_by_disease.keys())
 
     n = G.number_of_nodes()
     nl = range(n)
@@ -297,7 +396,7 @@ if __name__ == "__main__":
     logger.addHandler(handler)
     logger.info("Starting benchmark.")
     all_dfs = []
-    for network in ["wl"]:
+    for network in ["wl", "collectri"]:
         net_df = main(network)
         all_dfs.append(net_df)
     DF = pd.concat(all_dfs)
