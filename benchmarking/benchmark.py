@@ -36,6 +36,7 @@ def _try_import_qwalker() -> Tuple[bool, Optional[Callable], Optional[Callable]]
 
 logger = logging.getLogger(__name__)
 formatter = logging.Formatter("%(message)s")
+OUTPUT_DIR = Path("benchmarking")
 
 
 def timing(f: Callable) -> Callable:
@@ -49,6 +50,23 @@ def timing(f: Callable) -> Callable:
         return diff
 
     return wrap
+
+
+def _summarize_results(df: pd.DataFrame) -> pd.DataFrame:
+    summary = (
+        df.groupby(["Method", "Num_seeds", "Network"], as_index=False)
+        .agg({"Time (s)": ["mean", "std"], "Run": "count"})
+        .rename(columns={"count": "Runs"})
+    )
+    summary.columns = [
+        "Method",
+        "Num_seeds",
+        "Network",
+        "Time_mean",
+        "Time_std",
+        "Runs",
+    ]
+    return summary
 
 
 def _synthetic_seeds_by_group(
@@ -263,6 +281,7 @@ def main(network: str) -> pd.DataFrame:
 if __name__ == "__main__":
     if not Path("logs").exists():
         Path("logs").mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         filename="logs/benchmark.log",
         filemode="w",
@@ -282,4 +301,9 @@ if __name__ == "__main__":
         net_df = main(network)
         all_dfs.append(net_df)
     DF = pd.concat(all_dfs)
-    DF.to_csv("benchmark.csv")
+    output_csv = OUTPUT_DIR / "benchmark.csv"
+    summary_csv = OUTPUT_DIR / "benchmark_summary.csv"
+    DF.to_csv(output_csv, index=False)
+    _summarize_results(DF).to_csv(summary_csv, index=False)
+    logger.info("Saved benchmark results to %s", output_csv)
+    logger.info("Saved benchmark summary to %s", summary_csv)
