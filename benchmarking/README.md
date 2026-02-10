@@ -1,0 +1,260 @@
+# Benchmarking Guide
+
+This directory contains tools for benchmarking disease gene prioritization algorithms, including QWalker methods and baseline approaches.
+
+## Quick Start
+
+### 1. Run the Benchmark
+
+```bash
+cd /path/to/qdgp
+python benchmarking/benchmark.py
+```
+
+This will:
+- Test multiple networks (wl, collectri)
+- Run 5 repetitions for statistical analysis
+- Compare baseline methods (RWR, CRW, QA, DIAMOnD, Neighborhood) with QWalker algorithms
+- Save results to `benchmarking/benchmark.csv`
+
+### 2. Process and Visualize Results
+
+```bash
+# Original simple processing
+python benchmarking/process_benchmark.py
+
+# Enhanced processing with detailed analysis
+python benchmarking/process_benchmark_enhanced.py
+```
+
+The enhanced version creates:
+- **5 plots** (comparison, by seeds, by category, heatmap, QWalker-specific)
+- **4 summary tables** (by method, by seeds, by category, enhanced raw data)
+- **1 text report** with key findings
+
+## Output Files
+
+### CSV Files
+- `benchmark.csv` - Raw benchmark results
+- `benchmark_enhanced.csv` - With parsed method categories
+- `summary_by_method.csv` - Aggregated by algorithm
+- `summary_by_seeds.csv` - Aggregated by seed size
+- `summary_by_category.csv` - Aggregated by method type
+- `collectri_validation_genes.csv` - Validation gene list (if available)
+
+### Visualizations
+- `benchmark_comparison.png` - Boxplot comparing all methods
+- `benchmark_by_seeds.png` - Performance vs number of seeds
+- `benchmark_by_category.png` - Comparison by method category
+- `benchmark_heatmap.png` - Performance heatmap across networks
+- `qwalker_analysis.png` - QWalker classical vs quantum comparison
+
+### Reports
+- `benchmark_report.txt` - Summary statistics and findings
+
+## Method Categories
+
+### Baseline Methods
+- **RWR** (Random Walk with Restart) - `benchmark_rwr`
+- **CRW** (Continuous Random Walk) - `benchmark_crw`
+- **QA** (Quantum-inspired Algorithm) - `benchmark_qa`
+- **DIAMOnD** - `benchmark_dia`
+- **Neighborhood** - `benchmark_nei`
+
+### QWalker Methods
+
+#### Classical Random Walks
+- **Matrix mode**: Uses power iteration for exact results
+  - `qwalker_rw_matrix_rp0.15_steps50`
+  - `qwalker_rw_matrix_rp0.40_steps100`
+  
+- **Monte Carlo mode**: Uses simulation for large graphs
+  - `qwalker_rw_mc_rp0.15_steps50_n2000`
+
+Parameters:
+- `rp` = restart probability (e.g., 0.15, 0.40)
+- `steps` = number of walk steps
+- `n` = number of walkers (MC mode only)
+
+#### Quantum Walks
+- `qwalker_qw_adjacency_t0.5` - Using adjacency-based Hamiltonian
+- `qwalker_qw_adjacency_t1.0`
+- `qwalker_qw_laplacian_t1.0` - Using Laplacian-based Hamiltonian
+
+Parameters:
+- `t` = evolution time
+
+## Customizing the Benchmark
+
+### Adding New Parameter Combinations
+
+Edit `benchmark.py` around line 310-340:
+
+```python
+# Add more classical walk variants
+funcs.extend([
+    _make_benchmark_qwalker_random(
+        qwalker_random,
+        mode="matrix",
+        restart_prob=0.25,  # New value
+        n_steps=75,         # New value
+    ),
+])
+
+# Add more quantum walk variants
+funcs.extend([
+    _make_benchmark_qwalker_quantum(
+        qwalker_quantum,
+        t=2.0,              # New time
+        hamiltonian="adjacency"
+    ),
+])
+```
+
+### Testing Different Networks
+
+Edit the network list at the bottom of `benchmark.py`:
+
+```python
+for network in ["wl", "collectri", "string"]:  # Add your network
+    net_df = main(network)
+    all_dfs.append(net_df)
+```
+
+### Changing Number of Runs
+
+Modify `n_runs` in `main()`:
+
+```python
+n_runs = 10  # Default is 5
+```
+
+## Interpreting Results
+
+### Key Metrics
+
+1. **Time (s)**: Execution time per disease/condition
+2. **Num_seeds**: Number of seed genes for that test
+3. **Network**: Which PPI network was used
+4. **Category**: Method type (Baseline, QWalker)
+5. **Walk_Type**: Classical, Quantum, or Baseline
+
+### What to Look For
+
+✅ **Good signs for QWalker:**
+- Competitive timing with baselines
+- Consistent performance across seed sizes
+- Low variance across runs
+
+⚠️ **Areas to improve:**
+- If QWalker is consistently slower, consider:
+  - Reducing number of steps
+  - Using Monte Carlo mode for large networks
+  - Optimizing matrix operations
+  - Caching transition matrices
+
+### Statistical Significance
+
+The benchmark runs 5 replications by default. For publication-quality results:
+- Increase to 10-30 runs
+- Calculate confidence intervals
+- Use statistical tests (t-test, Mann-Whitney)
+
+## Performance Optimization Tips
+
+### For QWalker Random Walks
+
+1. **Matrix mode** (exact):
+   - Best for small-medium networks (< 10,000 nodes)
+   - Faster convergence with higher restart probability
+   - Reduce `n_steps` if network converges quickly
+
+2. **Monte Carlo mode** (approximate):
+   - Best for large networks (> 10,000 nodes)
+   - Trade-off: `n_walkers` vs accuracy
+   - Rule of thumb: `n_walkers >= 1000` for stable results
+
+### For QWalker Quantum Walks
+
+1. **Hamiltonian choice**:
+   - Adjacency: Usually faster, captures direct connections
+   - Laplacian: More expensive, captures structure better
+
+2. **Time parameter**:
+   - Smaller `t` (0.5-1.0): Faster, more local exploration
+   - Larger `t` (1.0-2.0): Slower, more global exploration
+
+3. **Matrix operations**:
+   - Sparse matrices automatically used
+   - For huge networks, consider approximation methods
+
+## Troubleshooting
+
+### QWalker not found
+
+If you see "QWalker not importable", install it:
+
+```bash
+# Option 1: Install from local source (development)
+cd /path/to/QWalker
+pip install -e .
+
+# Option 2: Install from GitHub
+pip install git+https://github.com/Elixion-Platform/QWalker.git
+```
+
+### Missing data files
+
+Ensure you have:
+- `data/` directory with PPI networks
+- `data/collectri/` with GRN data
+- Disease gene lists or DEG files
+
+### Memory issues
+
+For large networks:
+1. Use Monte Carlo mode instead of matrix mode
+2. Reduce number of concurrent runs
+3. Test on smaller seed sizes first
+4. Use sparse matrix operations (default)
+
+## Next Steps
+
+### After Benchmarking
+
+1. **Analyze results**: Run the enhanced processing script
+2. **Optimize parameters**: Based on performance data
+3. **Validate predictions**: Compare with known disease genes
+4. **Statistical analysis**: Calculate AUC, precision, recall
+
+### Parameter Tuning
+
+Create a grid search script to systematically test:
+
+```python
+restart_probs = [0.1, 0.15, 0.2, 0.3, 0.4]
+step_counts = [25, 50, 75, 100, 150]
+quantum_times = [0.5, 1.0, 1.5, 2.0]
+```
+
+See `benchmark.py` for how to add these systematically.
+
+## Citation
+
+If you use QWalker in your research, please cite:
+
+```
+@software{qwalker2026,
+  title = {QWalker: Classical and Quantum Walks for Gene Network Analysis},
+  author = {Garnica et al.},
+  year = {2026},
+  url = {https://github.com/Elixion-Platform/QWalker}
+}
+```
+
+## Contact
+
+For issues or questions:
+- Open an issue on GitHub
+- Check the main QWalker README
+- Review the qdgp documentation
