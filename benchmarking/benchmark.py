@@ -372,9 +372,12 @@ def main(network: str) -> pd.DataFrame:
                     network,
                 )
 
-    return pd.DataFrame(
+    df = pd.DataFrame(
         rows, columns=["Method", "Disease", "Num_seeds", "Time (s)", "Run", "Network"]
     )
+    # Add metadata for easier analysis
+    df["Timestamp"] = pd.Timestamp.now()
+    return df
 
 
 if __name__ == "__main__":
