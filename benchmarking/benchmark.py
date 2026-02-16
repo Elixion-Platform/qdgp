@@ -17,6 +17,7 @@ The benchmark:
 - Evaluates prediction quality on held-out test genes
 - Computes MRR by ranking methods per disease (like upstream)
 - Averages metrics across multiple runs and diseases
+ (default: 10 repeats)
 
 Output includes detailed per-disease results and aggregated summaries.
 See UNIFIED_BENCHMARK.md and UPSTREAM_ALIGNMENT.md for full documentation.
@@ -24,6 +25,7 @@ See UNIFIED_BENCHMARK.md and UPSTREAM_ALIGNMENT.md for full documentation.
 
 import logging
 import sys
+import argparse
 from functools import wraps
 from pathlib import Path
 from time import time
@@ -69,7 +71,6 @@ COLLECTRI_DIR = Path("data") / "collectri"
 
 # Global shuffle for consistent tie-breaking
 RNG = np.random.default_rng(0)
-
 
 def timing_and_evaluation(f: Callable) -> Callable:
     """Decorator that measures time and returns evaluation metrics."""
@@ -569,7 +570,7 @@ def _make_benchmark_qwalker_quantum(
     return _bench
 
 
-def main(network: str) -> pd.DataFrame:
+def main(network: str, *, n_runs: int = 10, split_ratio: float = 0.5) -> pd.DataFrame:
     if network == "collectri":
         G, code_dict = dt.build_graph_collectri(
             Path("data"), filter_method=dt.FilterGCC.TRUE
@@ -603,8 +604,8 @@ def main(network: str) -> pd.DataFrame:
 
     n = G.number_of_nodes()
     nl = range(n)
-    n_runs = 5
-    split_ratio = 0.5
+    n_runs = int(n_runs)
+    split_ratio = float(split_ratio)
     shuffled_nodes = RNG.permutation(list(G.nodes()))
     
     rows = []
@@ -740,6 +741,20 @@ def main(network: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Unified benchmark (timing + performance metrics)."
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=10,
+        help=(
+            "Number of repeated 50/50 train-test splits per disease "
+            "(default: 10, as in the original publication)."
+        ),
+    )
+    args = parser.parse_args()
+
     if not Path("logs").exists():
         Path("logs").mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -759,7 +774,7 @@ if __name__ == "__main__":
     logger.info("Starting unified benchmark (timing + performance metrics).")
     all_dfs = []
     for network in ["wl", "collectri"]:
-        net_df = main(network)
+        net_df = main(network, n_runs=int(args.runs))
         all_dfs.append(net_df)
     DF = pd.concat(all_dfs)
     
