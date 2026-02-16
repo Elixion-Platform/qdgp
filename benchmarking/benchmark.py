@@ -102,13 +102,15 @@ def evaluate_scores(
     
     Note: MRR is computed separately by ranking methods per disease (see post-processing).
     """
-    # Convert scores to dense numpy array (handles sparse matrices and matrix objects)
-    if hasattr(scores, "A"):  # sparse matrix
-        scores = scores.A.flatten()
-    elif hasattr(scores, "A1"):  # another sparse matrix type
-        scores = np.asarray(scores.A1)
+    # Convert scores to 1D numpy array (handles sparse matrices and matrix objects)
+    if hasattr(scores, "toarray"):  # scipy sparse matrix
+        scores = scores.toarray().ravel()
     else:
-        scores = np.asarray(scores).flatten()
+        scores = np.asarray(scores).ravel()
+    
+    # Validate shape
+    if scores.shape[0] != n_nodes:
+        raise ValueError(f"Expected {n_nodes} scores but got {scores.shape[0]}")
     
     train_seed_mask = ut.seed_list_to_mask(train_seeds, n_nodes)
     test_mask = (1 - train_seed_mask).astype(bool)
