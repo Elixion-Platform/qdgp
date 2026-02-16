@@ -102,15 +102,49 @@ def evaluate_scores(
     
     Note: MRR is computed separately by ranking methods per disease (see post-processing).
     """
-    # Convert scores to 1D numpy array (handles sparse matrices and matrix objects)
+    # Convert scores to a 1D numpy array of length n_nodes.
+    # - Native qdgp models typically return ndarray-like.
+    # - QWalker methods return dict[node] -> probability.
+    # - Some implementations may wrap the actual array in a length-1 container.
+    if isinstance(scores, (list, tuple)) and len(scores) == 1:
+        scores = scores[0]
+
+    if isinstance(scores, dict):
+        dense = np.zeros(int(n_nodes), dtype=float)
+        bad = 0
+        for node, val in scores.items():
+            try:
+                idx = int(node)
+                if 0 <= idx < int(n_nodes):
+                    dense[idx] = float(val)
+                else:
+                    bad += 1
+            except Exception:
+                bad += 1
+        # If most keys were unusable, raise a helpful error.
+        if bad > 0 and (len(scores) > 0) and (bad / float(len(scores)) > 0.5):
+            raise ValueError(
+                "Scores dict keys are not compatible with node indexing; "
+                f"bad_keys={bad}/{len(scores)}"
+            )
+        scores = dense
+
     if hasattr(scores, "toarray"):  # scipy sparse matrix
-        scores = scores.toarray().ravel()
-    else:
-        scores = np.asarray(scores).ravel()
-    
-    # Validate shape
-    if scores.shape[0] != n_nodes:
-        raise ValueError(f"Expected {n_nodes} scores but got {scores.shape[0]}")
+        scores = scores.toarray()
+
+    scores = np.asarray(scores)
+    # Unwrap object array containing a single array-like payload.
+    if scores.dtype == object and scores.size == 1:
+        payload = scores.item()
+        if hasattr(payload, "toarray"):
+            payload = payload.toarray()
+        scores = np.asarray(payload)
+
+    scores = scores.ravel()
+    if scores.shape[0] != int(n_nodes):
+        raise ValueError(
+            f"Expected {n_nodes} scores but got {scores.shape[0]} (type={type(scores).__name__})"
+        )
     
     train_seed_mask = ut.seed_list_to_mask(train_seeds, n_nodes)
     test_mask = (1 - train_seed_mask).astype(bool)
