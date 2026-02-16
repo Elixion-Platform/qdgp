@@ -1,6 +1,51 @@
 # QDGP - Quantum Disease Gene Prioritisation
 
-This repository contains the data and code used in the paper [Disease Gene Prioritization With Quantum Walks](https://arxiv.org/abs/2311.05486). 
+## Overview
+
+**QDGP** is an advanced computational framework for disease gene prioritization using quantum walk algorithms. It implements methods to identify disease-associated genes by simulating quantum and classical walks on protein-protein interaction (PPI) networks seeded with known disease genes.
+
+This repository is an enhanced version of the original [qdgp repository](https://github.com/markgolds/qdgp) by Mark Goldsmith, which implements the research from the paper [Disease Gene Prioritization With Quantum Walks](https://arxiv.org/abs/2311.05486).
+
+### What This Repository Contains
+
+- **Core Algorithms**: Quantum walk (QA), classical random walk (DK), and neighborhood-based scoring methods for gene prioritization
+- **Multiple PPI Networks**: Support for 8 different protein-protein interaction networks:
+  - GMB, BioGRID, STRING, IID, APID, HPRD, Whitmore-Leblond (WL), and CollecTRI
+- **Disease Gene Sets**: Three disease datasets:
+  - GMB (Gene-disease associations from graph mining)
+  - Open Targets (OT)
+  - DisGeNET (DGN)
+- **Comprehensive Benchmarking Framework**: Tools to evaluate and compare multiple gene prioritization methods
+- **Cross-Validation Pipeline**: Systematic evaluation across different network/disease combinations
+
+### What It Does
+
+The framework scores genes for a given disease by:
+1. Taking seed genes (known disease-associated genes) as input
+2. Running quantum or classical walks on a PPI network starting from these seeds
+3. Computing scores for all genes based on walk probability/amplitude
+4. Ranking genes by score to generate predictions of likely disease-associated genes
+
+### Output
+
+The framework produces:
+- **Ranked gene predictions**: CSV files with top N predicted genes and their scores
+- **Cross-validation results**: Performance metrics (Recall@k, MRR, AP, AUROC) across multiple runs
+- **Benchmarking reports**: Comparative analysis of different algorithms with both computational and predictive performance
+- **Visualizations**: Plots comparing method performance across networks and diseases
+
+### Key Enhancements Over Original Repository
+
+This version includes several important improvements:
+
+1. **QWalker Integration**: Integration with the quantum walk framework from the [QWalker repository](https://github.com/markgolds/qwalker) for enhanced quantum algorithms
+2. **Unified Benchmarking System**: Complete benchmark suite that captures both:
+   - Computational performance (execution time)
+   - Predictive performance (Recall@k, MRR, AP, AUROC)
+3. **Enhanced Metrics**: Aligned metrics with upstream repository including True Hits@k for better method comparison
+4. **Improved Visualization**: Better analysis and plotting tools for benchmark results
+5. **CollecTRI Support**: Added support for the CollecTRI gene regulatory network
+6. **Extended Documentation**: Detailed benchmarking guides and metrics documentation
 
 ## Installation
 0. Install [Miniconda](https://docs.anaconda.com/free/miniconda/) if it's not already installed.
